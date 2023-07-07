@@ -34,7 +34,8 @@
   ],
   "dependencies": {
     "@superset-ui/switchboard": "^0.18.26-0",
-    "jwt-decode": "^3.1.2"
+    "jwt-decode": "^3.1.2",
+    "query-string": "^8.1.0"
   },
   "devDependencies": {
     "@babel/cli": "^7.16.8",
