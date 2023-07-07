@@ -19,12 +19,14 @@
 
 import {
   DASHBOARD_UI_FILTER_CONFIG_URL_PARAM_KEY,
-  IFRAME_COMMS_MESSAGE_TYPE
-} from './const';
+  IFRAME_COMMS_MESSAGE_TYPE,
+} from "./const";
+
+import queryString from "query-string";
 
 // We can swap this out for the actual switchboard package once it gets published
-import { Switchboard } from '@superset-ui/switchboard';
-import { getGuestTokenRefreshTiming } from './guestTokenRefresh';
+import { Switchboard } from "@superset-ui/switchboard";
+import { getGuestTokenRefreshTiming } from "./guestTokenRefresh";
 
 /**
  * The function to fetch a guest token from your Host App's backend server.
@@ -34,41 +36,43 @@ import { getGuestTokenRefreshTiming } from './guestTokenRefresh';
 export type GuestTokenFetchFn = () => Promise<string>;
 
 export type UiConfigType = {
-  hideTitle?: boolean
-  hideTab?: boolean
-  hideChartControls?: boolean
+  hideTitle?: boolean;
+  hideTab?: boolean;
+  hideChartControls?: boolean;
   filters?: {
-    [key: string]: boolean | undefined
-    visible?: boolean
-    expanded?: boolean
-  }
-}
+    [key: string]: boolean | undefined;
+    visible?: boolean;
+    expanded?: boolean;
+  };
+  params?: Record<string, string | number | boolean>;
+};
 
 export type EmbedDashboardParams = {
   /** The id provided by the embed configuration UI in Superset */
-  id: string
+  id: string;
   /** The domain where Superset can be located, with protocol, such as: https://superset.example.com */
-  supersetDomain: string
+  supersetDomain: string;
   /** The html element within which to mount the iframe */
-  mountPoint: HTMLElement
+  mountPoint: HTMLElement;
   /** A function to fetch a guest token from the Host App's backend server */
-  fetchGuestToken: GuestTokenFetchFn
+  fetchGuestToken: GuestTokenFetchFn;
   /** The dashboard UI config: hideTitle, hideTab, hideChartControls, filters.visible, filters.expanded **/
-  dashboardUiConfig?: UiConfigType
+  dashboardUiConfig?: UiConfigType;
   /** Are we in debug mode? */
-  debug?: boolean
-}
+  debug?: boolean;
+};
 
 export type Size = {
-  width: number, height: number
-}
+  width: number;
+  height: number;
+};
 
 export type EmbeddedDashboard = {
-  getScrollSize: () => Promise<Size>
-  unmount: () => void
-  getDashboardPermalink: (anchor: string) => Promise<string>
-  getActiveTabs: () => Promise<string[]>
-}
+  getScrollSize: () => Promise<Size>;
+  unmount: () => void;
+  getDashboardPermalink: (anchor: string) => Promise<string>;
+  getActiveTabs: () => Promise<string[]>;
+};
 
 /**
  * Embeds a Superset dashboard into the page using an iframe.
@@ -79,43 +83,75 @@ export async function embedDashboard({
   mountPoint,
   fetchGuestToken,
   dashboardUiConfig,
-  debug = false
+  debug = false,
 }: EmbedDashboardParams): Promise<EmbeddedDashboard> {
+  // Validate params
+  if (!id || typeof id !== "string") {
+    throw new Error("Invalid id");
+  }
+  if (!supersetDomain || typeof supersetDomain !== "string") {
+    throw new Error("Invalid supersetDomain");
+  }
+  if (!mountPoint || !(mountPoint instanceof HTMLElement)) {
+    throw new Error("Invalid mountPoint");
+  }
+  if (!fetchGuestToken || typeof fetchGuestToken !== "function") {
+    throw new Error("Invalid fetchGuestToken");
+  }
   function log(...info: unknown[]) {
     if (debug) {
       console.debug(`[superset-embedded-sdk][dashboard ${id}]`, ...info);
     }
   }
 
-  log('embedding');
+  log("embedding");
 
   function calculateConfig() {
-    let configNumber = 0
-    if(dashboardUiConfig) {
-      if(dashboardUiConfig.hideTitle) {
-        configNumber += 1
+    let configNumber = 0;
+    if (dashboardUiConfig) {
+      if (dashboardUiConfig.hideTitle) {
+        configNumber += 1;
       }
-      if(dashboardUiConfig.hideTab) {
-        configNumber += 2
+      if (dashboardUiConfig.hideTab) {
+        configNumber += 2;
       }
-      if(dashboardUiConfig.hideChartControls) {
-        configNumber += 8
+      if (dashboardUiConfig.hideChartControls) {
+        configNumber += 8;
       }
     }
-    return configNumber
+    return configNumber;
+  }
+
+  function checkFiterUrlParams(
+    filterConfig?: Record<string, any>
+  ): Record<string, string> {
+    if (!filterConfig || filterConfig.keys.length === 0) {
+      return {};
+    }
+    Object.keys(filterConfig).forEach((key) => {
+      if (!DASHBOARD_UI_FILTER_CONFIG_URL_PARAM_KEY.hasOwnProperty(key)) {
+        log(`Filter key '${key}' not allowed in filterConfig`);
+      }
+    });
+    return filterConfig;
   }
 
   async function mountIframe(): Promise<Switchboard> {
-    return new Promise(resolve => {
-      const iframe = document.createElement('iframe');
-      const dashboardConfig = dashboardUiConfig ? `?uiConfig=${calculateConfig()}` : ""
-      const filterConfig = dashboardUiConfig?.filters || {}
-      const filterConfigKeys = Object.keys(filterConfig)
-      const filterConfigUrlParams = filterConfigKeys.length > 0
-        ? "&"
-        + filterConfigKeys
-          .map(key => DASHBOARD_UI_FILTER_CONFIG_URL_PARAM_KEY[key] + '=' + filterConfig[key]).join('&')
-        : ""
+    return new Promise((resolve) => {
+      const iframe = document.createElement("iframe");
+      const dashboardConfig = dashboardUiConfig
+        ? `?uiConfig=${calculateConfig()}`
+        : "";
+      const filterConfig = checkFiterUrlParams(dashboardUiConfig?.filters);
+      const queryParams = dashboardUiConfig?.params || {};
+
+      const filterConfigUrlParams = queryString.stringify(
+        {
+          ...queryParams,
+          ...filterConfig,
+        },
+        { encode: false }
+      );
 
       // set up the iframe's sandbox configuration
       iframe.sandbox.add("allow-same-origin"); // needed for postMessage to work
@@ -128,7 +164,7 @@ export async function embedDashboard({
       // iframe.sandbox.add("allow-top-navigation");
 
       // add the event listener before setting src, to be 100% sure that we capture the load event
-      iframe.addEventListener('load', () => {
+      iframe.addEventListener("load", () => {
         // MessageChannel allows us to send and receive messages smoothly between our window and the iframe
         // See https://developer.mozilla.org/en-US/docs/Web/API/Channel_Messaging_API
         const commsChannel = new MessageChannel();
@@ -141,18 +177,23 @@ export async function embedDashboard({
         iframe.contentWindow!.postMessage(
           { type: IFRAME_COMMS_MESSAGE_TYPE, handshake: "port transfer" },
           supersetDomain,
-          [theirPort],
-        )
-        log('sent message channel to the iframe');
+          [theirPort]
+        );
+        log("sent message channel to the iframe");
 
         // return our port from the promise
-        resolve(new Switchboard({ port: ourPort, name: 'superset-embedded-sdk', debug }));
+        resolve(
+          new Switchboard({
+            port: ourPort,
+            name: "superset-embedded-sdk",
+            debug,
+          })
+        );
       });
 
       iframe.src = `${supersetDomain}/embedded/${id}${dashboardConfig}${filterConfigUrlParams}`;
-      //@ts-ignore
       mountPoint.replaceChildren(iframe);
-      log('placed the iframe')
+      log("placed the iframe");
     });
   }
 
@@ -161,27 +202,27 @@ export async function embedDashboard({
     mountIframe(),
   ]);
 
-  ourPort.emit('guestToken', { guestToken });
-  log('sent guest token');
+  ourPort.emit("guestToken", { guestToken });
+  log("sent guest token");
 
   async function refreshGuestToken() {
     const newGuestToken = await fetchGuestToken();
-    ourPort.emit('guestToken', { guestToken: newGuestToken });
+    ourPort.emit("guestToken", { guestToken: newGuestToken });
     setTimeout(refreshGuestToken, getGuestTokenRefreshTiming(newGuestToken));
   }
 
   setTimeout(refreshGuestToken, getGuestTokenRefreshTiming(guestToken));
 
   function unmount() {
-    log('unmounting');
+    log("unmounting");
     //@ts-ignore
     mountPoint.replaceChildren();
   }
 
-  const getScrollSize = () => ourPort.get<Size>('getScrollSize');
+  const getScrollSize = () => ourPort.get<Size>("getScrollSize");
   const getDashboardPermalink = (anchor: string) =>
-    ourPort.get<string>('getDashboardPermalink', { anchor });
-  const getActiveTabs = () => ourPort.get<string[]>('getActiveTabs')
+    ourPort.get<string>("getDashboardPermalink", { anchor });
+  const getActiveTabs = () => ourPort.get<string[]>("getActiveTabs");
 
   return {
     getScrollSize,
