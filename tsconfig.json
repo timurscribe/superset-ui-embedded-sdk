@@ -9,7 +9,6 @@
     "target": "es6",
     "lib": ["DOM", "ESNext"],
     "module": "esnext",
-    "types": [],
 
     // output
     "outDir": "./dist",
@@ -23,7 +22,6 @@
 
   "exclude": [
     "tests",
-    "**/*.test.ts",
     "dist",
     "lib",
     "node_modules"
