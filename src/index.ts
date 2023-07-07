@@ -1,7 +1,7 @@
-import { Switchboard } from '@superset-ui/switchboard';
-import { IFRAME_COMMS_MESSAGE_TYPE } from './const';
-import { getGuestTokenRefreshTiming } from './guestTokenRefresh';
-import { applyReplaceChildrenPolyfill } from './polyfills';
+import { Switchboard } from "@superset-ui/switchboard";
+import { IFRAME_COMMS_MESSAGE_TYPE } from "./const";
+import { getGuestTokenRefreshTiming } from "./guestTokenRefresh";
+import { applyReplaceChildrenPolyfill } from "./polyfills";
 
 /**
  * The function to fetch a guest token from your Host App's backend server.
@@ -11,34 +11,35 @@ import { applyReplaceChildrenPolyfill } from './polyfills';
 export type GuestTokenFetchFn = () => Promise<string>;
 
 export type UiConfigType = {
-  hideTitle?: boolean
-  hideTab?: boolean
-  hideChartControls?: boolean
-}
+  hideTitle?: boolean;
+  hideTab?: boolean;
+  hideChartControls?: boolean;
+};
 
 export type EmbedDashboardParams = {
   /** The id provided by the embed configuration UI in Superset */
-  id: string
+  id: string;
   /** The domain where Superset can be located, with protocol, such as: https://abc123.us1a.preset.io */
-  supersetDomain: string // todo remove this option? after migrating to the preset frontend sdk
+  supersetDomain: string; // todo remove this option? after migrating to the preset frontend sdk
   /** The html element within which to mount the iframe */
-  mountPoint: HTMLElement
+  mountPoint: HTMLElement;
   /** A function to fetch a guest token from the Host App's backend server */
-  fetchGuestToken: GuestTokenFetchFn
+  fetchGuestToken: GuestTokenFetchFn;
   /** The dashboard UI config: hideTitle, hideTab, hideChartControls **/
-  dashboardUiConfig?: UiConfigType
+  dashboardUiConfig?: UiConfigType;
   /** Enables extra logging */
-  debug?: boolean
-}
+  debug?: boolean;
+};
 
 export type Size = {
-  width: number, height: number
-}
+  width: number;
+  height: number;
+};
 
 export type EmbeddedDashboard = {
-  getScrollSize: () => Promise<Size>
-  unmount: () => void
-}
+  getScrollSize: () => Promise<Size>;
+  unmount: () => void;
+};
 
 /**
  * Embeds a Superset dashboard into the page using an iframe.
@@ -49,7 +50,7 @@ export async function embedDashboard({
   mountPoint,
   fetchGuestToken,
   dashboardUiConfig,
-  debug = false
+  debug = false,
 }: EmbedDashboardParams): Promise<EmbeddedDashboard> {
   function log(...info: unknown[]) {
     if (debug) {
@@ -57,30 +58,32 @@ export async function embedDashboard({
     }
   }
 
-  log('embedding');
+  log("embedding");
   // Polyfill replaceChildren
-  applyReplaceChildrenPolyfill()
+  applyReplaceChildrenPolyfill();
 
   function calculateConfig() {
-    let configNumber = 0
-    if(dashboardUiConfig) {
-      if(dashboardUiConfig.hideTitle) {
-        configNumber += 1
+    let configNumber = 0;
+    if (dashboardUiConfig) {
+      if (dashboardUiConfig.hideTitle) {
+        configNumber += 1;
       }
-      if(dashboardUiConfig.hideTab) {
-        configNumber += 2
+      if (dashboardUiConfig.hideTab) {
+        configNumber += 2;
       }
-      if(dashboardUiConfig.hideChartControls) {
-        configNumber += 8
+      if (dashboardUiConfig.hideChartControls) {
+        configNumber += 8;
       }
     }
-    return configNumber
+    return configNumber;
   }
 
   async function mountIframe(): Promise<Switchboard> {
-    return new Promise(resolve => {
-      const iframe = document.createElement('iframe');
-      const dashboardConfig = dashboardUiConfig ? `?uiConfig=${calculateConfig()}` : ""
+    return new Promise((resolve) => {
+      const iframe = document.createElement("iframe");
+      const dashboardConfig = dashboardUiConfig
+        ? `?uiConfig=${calculateConfig()}`
+        : "";
 
       // setup the iframe's sandbox configuration
       iframe.sandbox.add("allow-same-origin"); // needed for postMessage to work
@@ -89,18 +92,26 @@ export async function embedDashboard({
       iframe.sandbox.add("allow-downloads"); // for downloading charts as image
       iframe.sandbox.add("allow-top-navigation"); // for links to open
       iframe.sandbox.add("allow-forms"); // for forms to submit
-      iframe.sandbox.add("allow-popups"); // for exporting charts as csv 
+      iframe.sandbox.add("allow-popups"); // for exporting charts as csv
 
       // add the event listener before setting src, to be 100% sure that we capture the load event
-      iframe.addEventListener('load', () => {
-        const switchboard = _initComms(iframe.contentWindow!, supersetDomain, debug);
-        log('sent message channel to the iframe');
+      iframe.addEventListener("load", () => {
+        const switchboard = _initComms(
+          iframe.contentWindow!,
+          supersetDomain,
+          debug
+        );
+        log("sent message channel to the iframe");
         resolve(switchboard);
       });
 
+      iframe.addEventListener("hashchange", () =>
+        window.parent.postMessage(window.location.hash)
+      );
+
       iframe.src = `${supersetDomain}/embedded/${id}${dashboardConfig}`;
       mountPoint?.replaceChildren(iframe);
-      log('placed the iframe')
+      log("placed the iframe");
     });
   }
 
@@ -109,23 +120,23 @@ export async function embedDashboard({
     mountIframe(),
   ]);
 
-  ourPort.emit('guestToken', { guestToken });
-  log('sent guest token');
+  ourPort.emit("guestToken", { guestToken });
+  log("sent guest token");
 
   async function refreshGuestToken() {
     const newGuestToken = await fetchGuestToken();
-    ourPort.emit('guestToken', { guestToken: newGuestToken });
+    ourPort.emit("guestToken", { guestToken: newGuestToken });
     setTimeout(refreshGuestToken, getGuestTokenRefreshTiming(newGuestToken));
   }
 
   setTimeout(refreshGuestToken, getGuestTokenRefreshTiming(guestToken));
 
   function unmount() {
-    log('unmounting');
+    log("unmounting");
     mountPoint?.replaceChildren();
   }
 
-  const getScrollSize = () => ourPort.get<Size>('getScrollSize');
+  const getScrollSize = () => ourPort.get<Size>("getScrollSize");
 
   return {
     getScrollSize,
@@ -133,7 +144,11 @@ export async function embedDashboard({
   };
 }
 
-export function _initComms(window: Window, targetOrigin: string, debug = false) {
+export function _initComms(
+  window: Window,
+  targetOrigin: string,
+  debug = false
+) {
   // MessageChannel allows us to send and receive messages smoothly between our window and the iframe
   // See https://developer.mozilla.org/en-US/docs/Web/API/Channel_Messaging_API
   const commsChannel = new MessageChannel();
@@ -146,9 +161,9 @@ export function _initComms(window: Window, targetOrigin: string, debug = false) 
   window.postMessage(
     { type: IFRAME_COMMS_MESSAGE_TYPE, handshake: "port transfer" },
     targetOrigin,
-    [theirPort],
-  )
+    [theirPort]
+  );
 
   // return our port from the promise
-  return new Switchboard({ port: ourPort, name: 'preset-frontend-sdk', debug });
+  return new Switchboard({ port: ourPort, name: "preset-frontend-sdk", debug });
 }
