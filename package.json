@@ -1,5 +1,5 @@
 {
-  "name": "@custom/superset-ui/embedded-sdk",
+  "name": "@custom-superset-ui/embedded-sdk",
   "version": "0.1.0-alpha.9",
   "description": "SDK for embedding resources from Superset into your own application",
   "access": "public",
